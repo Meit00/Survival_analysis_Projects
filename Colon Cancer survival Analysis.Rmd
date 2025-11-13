@@ -1,0 +1,112 @@
+---
+title: "Survival Analysis Colon Cancer"
+author: "meit"
+date: "2025-01-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Survial Analysis; Colon Cancer example
+The colon dataset includes information on colon cancer patients, such as survival time, status (event occurred or censored), and covariates like age, sex, and treatment.
+
+##Sample Question
+
+What is the survival rate of patients with stage B/C colon cancer undergoing different chemotherapy treatments, and how do these treatments compare in terms of effectiveness?
+1.Plot the survival curves for patients undergoing different treatments (e.g., observation, Levamisole, Levamisole + 5-FU) to visualize the survival probabilities over time
+2.Assess the impact of different treatments on survival time while controlling for other covariates such as age, sex, and tumor.
+3.Use the log-rank test to compare the survival distributions of the different treatment groups and determine if there are statistically significant differences in survival rates between them.
+
+To start with this, 
+
+First load all libraries
+
+```{r, results='hide'}
+library(dplyr)
+library(survival)
+library(survminer)
+```
+
+Now load the default dataset;
+and use head and str to asses the data.
+
+```{r}
+?colon
+head(colon)
+str(colon)
+```
+##Survival Object
+The Surv() function creates a survival object. Here, time is the survival time, and status indicates whether the event (death) occurred (1) or is censored (0). This object is the basis for Kaplan-Meier curves, Cox models, and log-rank tests.
+
+```{r}
+surv_obj <- Surv(time = colon$time, event = colon$status)
+```
+
+##Kaplan-Meier Curve Analysis
+The Kaplan-Meier curve shows survival probabilities for each treatment group over time. A significant p-value indicates differences in survival across groups.
+survfit() fits the Kaplan-Meier estimator, stratified by rx (treatment group).
+ggsurvplot() creates a detailed survival plot:
+pval = TRUE: Adds the p-value for the log-rank test.
+conf.int = TRUE: Adds confidence intervals to the curve.
+risk.table = TRUE: Shows the number of patients at risk at each time point.
+
+```{r}
+km_fit <- survfit(surv_obj ~ colon$rx, data = colon)
+Km_curve <- ggsurvplot(km_fit, data = colon, 
+           pval = TRUE, conf.int = TRUE, 
+           risk.table = TRUE,
+           legend.labs = c("Obs", "Lev", "Lev+5FU"),
+           xlab = "Time (days)", ylab = "Survival Probability")
+print(Km_curve) #easy option is km_curve <- ggsurvplot(km_fit)
+km_fit
+plot1 <- ggsurvplot(km_fit)
+print(plot1)
+```
+The above curve visualizes survival trends and highlights differences between treatment groups.
+For the colon dataset, Lev+5FU likely has the best survival curve, staying higher over time, indicating its effectiveness in reducing death risk.
+
+Other points;
+Steeper drops indicate higher event (death) rates at certain time points.
+Flatter segments indicate periods where no events occurred.
+If the curves for different groups (e.g., Obs, Lev, and Lev+5FU) diverge significantly, it suggests differences in survival probabilities among treatment groups.
+
+##Cox PH fit
+
+The Cox model provides hazard ratios (HR) for covariates, allowing us to quantify their effects on survival.Hazard ratios from the Cox model quantify the risk of death associated with each covariate. 
+
+For instance, if rxLev has a hazard ratio of 0.7, it means that patients receiving treatment Lev have a 30% lower risk of death compared to the reference group.
+
+```{r}
+cox_model <- coxph(surv_obj ~ age + sex + rx + nodes, data = colon)
+summary(cox_model)
+```
+
+Age: HR > 1 might indicate that older patients have a higher risk of death.
+Sex: If not significant (p > 0.05), gender may not affect survival.
+HR for Lev+5FU < 1 (e.g., 0.70): Indicates this treatment reduces the hazard of death by 30% compared to the reference group (Obs).
+HR > 1 (e.g., 1.20): Indicates that having more involved lymph nodes increases the hazard of death.
+Indicates the statistical significance of each covariate.
+A p-value < 0.05 suggests that the covariate significantly impacts survival.
+
+##Log-Rank Test
+The log-rank test validates differences in survival across groups. 
+Higher Chi-square values indicate greater differences between groups.
+
+```{r}
+log_rank <- survdiff(surv_obj ~ colon$rx, data = colon)
+log_rank
+```
+If the p-value < 0.05, the survival differences between treatment groups (rx) are statistically significant.
+Eg, If survival for Lev+5FU is significantly better than Obs and Lev, the p-value will reflect this.
+The p-value is much smaller than the conventional significance level of 0.05, indicates very strong evidence against the null hypothesis.
+The log-rank test results suggest that there is a highly significant difference in survival among the three treatment groups.
+
+##Conclusion
+Observing the plot, we can conclude that there appears to be significant difference between the groups. The groups start at 1 (100% survival) at time = 0. Lev+5FU group has the highest survival probability throughout the entire time period as per curve because it declines more slowly compared to the other groups, indicating better survival outcomes. The observation group has lowest survival rates because it declines the fastest.
+
+To understand the differences, the log-rank test indicates significant differences in survival among the three treatment groups (p<0.0001). Observation-Only (Obs): Worse survival than expected, suggesting this group has the highest hazard of death. Lev group has Slightly worse survival than expected, but not as extreme as Obs. Lev+5FU has better survival than expected, suggesting this group has the lowest hazard of death and is the most effective treatment. Lower expeced than observed values hint the results are significantly different form null hypothesis. 
+
+To understand how coraviates affect the outcome, Coxx PH was done. Age has no statistically significant impact on survival becuase the HR is 1.0008, very close to 1. Similary HR ratio of sex suggests that sex does not significantly affect survival. Patients receiving treatment Lev do not have a significantly reduced hazard compared to the reference group names 'observed' because HR is close to one. Patients receiving Lev+5FU have a 37.4% reduction in the hazard of death compared to the reference group (Obs). This effect is highly significant (p<0.001), indicating strong evidence that Lev+5FU is an effective treatment.
+
